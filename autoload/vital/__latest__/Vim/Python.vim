@@ -6,6 +6,13 @@ let s:has_python3 = has('python3')
 let s:current_major_version = 0
 let s:default_major_version = 2
 
+function! s:_vital_loaded(V) abort " {{{
+  let s:JSON = a:V.import('Web.JSON')
+endfunction " }}}
+function! s:_vital_depends() abort " {{{
+  return ['Web.JSON']
+endfunction " }}}
+
 function! s:_throw(msg) abort
   throw printf('vital: Vim.Python: %s', a:msg)
 endfunction
@@ -110,7 +117,32 @@ if v:version >= 704 || (v:version == 703 && has('patch601'))
   endfunction
 else
   function! s:eval_expr(expr, ...) abort
-    call s:_throw('eval_expr() requires Vim 7.3.601 or later')
+    let major_version = s:_get_valid_major_version(get(a:000, 0, 0))
+    let expr = type(a:expr) == type('') ? a:expr : join(a:expr, "\n")
+    let tempfile = tempname()
+    try
+      let expr_code = [
+            \ 'try:',
+            \ '  import json',
+            \ 'except ImportError:',
+            \ '  import simplejson as json',
+            \ printf('r = %s', expr),
+            \ 'try:',
+            \ printf('  f = open("%s", "w")', tempfile),
+            \ '  json.dump(r, f)',
+            \ 'finally:',
+            \ '  f.close()',
+            \ 'del f',
+            \ 'del r',
+            \]
+      execute s:exec_code(expr_code, major_version)
+      let content = join(readfile(tempfile, 'b'))
+      return s:JSON.decode(content)
+    finally
+      if filereadable(tempfile)
+        call delete(tempfile)
+      endif
+    endtry
   endfunction
 endif
 
